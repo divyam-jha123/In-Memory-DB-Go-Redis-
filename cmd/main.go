@@ -8,7 +8,7 @@ import (
 
 func main() {
 	// You can use print statements as follows for debugging, they'll be visible when running tests.
-	port := ":6379"
+	port := ":6374"
 
 	err := server.Start(port)
 

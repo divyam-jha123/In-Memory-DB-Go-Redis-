@@ -1,8 +1,9 @@
 package server
 
 import (
-    "fmt"
-    "net"
+	"bytes"
+	"fmt"
+	"net"
 )
 
 func Start(address string) error {
@@ -29,7 +30,22 @@ func Start(address string) error {
 }
 
 func handleConnection(conn net.Conn) {
-    defer conn.Close()
+
+	buffer := make([]byte, 1024)
+
+	n, err := conn.Read(buffer)
+
+	if err != nil {
+		fmt.Println("Error:", err)
+		return
+	}
+
+  // Process and use the data (here, we'll just print it)
+	data := buffer[:n]
+
+	if  bytes.Contains(bytes.ToUpper(data), []byte("PING")) {
+		conn.Write([]byte("+PONG\r\n"))
+	}
 
     fmt.Println("New client connected:", conn.RemoteAddr())
 }
