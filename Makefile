@@ -2,4 +2,4 @@
 
 # Like `npm run dev`: compile and start the server
 dev:
-	go run ./app
+	go run ./cmd
