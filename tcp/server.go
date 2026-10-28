@@ -25,27 +25,30 @@ func Start(address string) error {
             continue
         }
 
+		// goroutine -> handle multiple clients
         go handleConnection(conn)
     }
 }
 
 func handleConnection(conn net.Conn) {
 
+	fmt.Println("New client connected:", conn.RemoteAddr())
+	defer conn.Close()
+
 	buffer := make([]byte, 1024)
 
-	n, err := conn.Read(buffer)
+	for {
+		n, err := conn.Read(buffer)
+	
+		if err != nil {
+			fmt.Println("Error:", err)
+			break
+		}
 
-	if err != nil {
-		fmt.Println("Error:", err)
-		return
+		data := buffer[:n]
+
+		if  bytes.Contains(bytes.ToUpper(data), []byte("PING")) {
+			conn.Write([]byte("+PONG\r\n"))
+		}
 	}
-
-  // Process and use the data (here, we'll just print it)
-	data := buffer[:n]
-
-	if  bytes.Contains(bytes.ToUpper(data), []byte("PING")) {
-		conn.Write([]byte("+PONG\r\n"))
-	}
-
-    fmt.Println("New client connected:", conn.RemoteAddr())
 }
