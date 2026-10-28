@@ -41,6 +41,7 @@ func handleConnection(conn net.Conn) {
 
 	// one reader per connection, so buffered bytes are not lost between commands
 	reader := bufio.NewReader(conn)
+	writer := resp.NewWriter(conn)
 
 	for {
 		// redis-cli sends commands as arrays: *N\r\n followed by N bulk strings
@@ -78,6 +79,15 @@ func handleConnection(conn net.Conn) {
 
 		if(count == 1 && args[0] == "PING"){
 			conn.Write([]byte("+PONG\r\n"))
+		}
+
+		if(count == 3 && args[0] == "SET"){
+			err := writer.WriteBulkString("OK")
+
+
+			if(err != nil) {
+				fmt.Println("error while writing the resp encoding")
+			}
 		}
 
 		fmt.Println(args)
