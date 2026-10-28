@@ -12,7 +12,7 @@ func main() {
 
 	err := server.Start(port)
 
-	if err == nil {
+	if err != nil {
 		os.Exit(1)
 	}
 }

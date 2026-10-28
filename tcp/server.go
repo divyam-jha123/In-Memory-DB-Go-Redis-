@@ -1,9 +1,13 @@
 package server
 
 import (
-	"bytes"
+	"bufio"
 	"fmt"
 	"net"
+	"strconv"
+	"strings"
+
+	"github.com/codecrafters-io/redis-starter-go/resp"
 )
 
 func Start(address string) error {
@@ -35,20 +39,47 @@ func handleConnection(conn net.Conn) {
 	fmt.Println("New client connected:", conn.RemoteAddr())
 	defer conn.Close()
 
-	buffer := make([]byte, 1024)
+	// one reader per connection, so buffered bytes are not lost between commands
+	reader := bufio.NewReader(conn)
 
 	for {
-		n, err := conn.Read(buffer)
-	
+		// redis-cli sends commands as arrays: *N\r\n followed by N bulk strings
+		header, err := reader.ReadString('\n')
 		if err != nil {
 			fmt.Println("Error:", err)
 			break
 		}
 
-		data := buffer[:n]
+		header = strings.TrimRight(header, "\r\n")
+		if len(header) == 0 || header[0] != '*' {
+			conn.Write([]byte("-ERR expected array\r\n"))
+			continue
+		}
 
-		if  bytes.Contains(bytes.ToUpper(data), []byte("PING")) {
+		count, err := strconv.Atoi(header[1:])
+		if err != nil || count < 1 {
+			conn.Write([]byte("-ERR invalid array length\r\n"))
+			continue
+		}
+
+		fmt.Println("count:" , count)
+
+		// []string
+		args := make([]string, 0, count)
+		for range count {
+			arg, err := resp.ParseBulkString(reader)
+			if err != nil {
+				fmt.Println("Parse error:", err)
+				return
+			}
+
+			args = append(args, arg)
+		}
+
+		if(count == 1 && args[0] == "PING"){
 			conn.Write([]byte("+PONG\r\n"))
 		}
+
+		fmt.Println(args)
 	}
 }
