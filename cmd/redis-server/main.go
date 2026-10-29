@@ -20,6 +20,7 @@ func main() {
 		"PING": commands.Ping,
 		"SET":  commands.Set,
 		"GET":  commands.Get,
+		"DEL": commands.Del,
 	}
 
 	err := server.Start(port, db, handlers)
