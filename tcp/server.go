@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/codecrafters-io/redis-starter-go/resp"
+	"github.com/codecrafters-io/redis-starter-go/store"
 )
 
 func Start(address string) error {
@@ -22,6 +23,8 @@ func Start(address string) error {
 
     fmt.Println("Redis server listening on", address)
 
+	store := store.NewStore()
+
     for {
         conn, err := listener.Accept()
         if err != nil {
@@ -30,11 +33,11 @@ func Start(address string) error {
         }
 
 		// goroutine -> handle multiple clients
-        go handleConnection(conn)
+        go handleConnection(conn, store)
     }
 }
 
-func handleConnection(conn net.Conn) {
+func handleConnection(conn net.Conn, store *store.Store) {
 
 	fmt.Println("New client connected:", conn.RemoteAddr())
 	defer conn.Close()
@@ -77,18 +80,25 @@ func handleConnection(conn net.Conn) {
 			args = append(args, arg)
 		}
 
-		if(count == 1 && args[0] == "PING"){
-			conn.Write([]byte("+PONG\r\n"))
-		}
+		command := strings.ToUpper(args[0])
 
-		if(count == 3 && args[0] == "SET"){
-			err := writer.WriteBulkString("OK")
+        switch command {
+			case "PING":
+					writer.EncodeSimpleString("PONG")
+			case "SET":
+					store.Set(args[1], args[2])
+					writer.EncodeSimpleString("OK")
+			case "GET":
+					value, exists := store.Get(args[1])
 
+					if(!exists) {
+						writer.EncodeError("key not found")
+					}
 
-			if(err != nil) {
-				fmt.Println("error while writing the resp encoding")
-			}
-		}
+					writer.EncodeBulkString(value)
+			default:
+					writer.EncodeError("undefined command")
+        }
 
 		fmt.Println(args)
 	}
