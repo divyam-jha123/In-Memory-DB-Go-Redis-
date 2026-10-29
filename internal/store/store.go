@@ -1,34 +1,60 @@
 package store
 
-import "sync"
+import (
+	"sync"
+	"time"
+)
 
 type Store struct {
 	mu sync.Mutex
-	data map[string]string
+	data map[string]entry
 }
 
+type entry struct {
+	value string
+	expiresAt time.Time
+}
 
 func NewStore() *Store {
 	return &Store{
-		data: make(map[string]string),
+		data: make(map[string]entry),
 	}
 }
 
-func (s *Store) Set(key string, value string) {
+func (e *entry) expired(now time.Time) bool {
+	return !e.expiresAt.IsZero() && now.After(e.expiresAt)
+}
+
+func (s *Store) Set(key string, value string, t time.Duration) {
 	s.mu.Lock()
 
 	defer s.mu.Unlock()
+	
+	e := entry{value: value}
 
-	s.data[key] = value
+	if t > 0 {
+		e.expiresAt = time.Now().Add(t)
+    }
+
+	s.data[key] = e
 }
 
 func (s *Store) Get(key string) (string, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	value, exists := s.data[key]
+	e, exists := s.data[key]
+	if !exists {
+		return "", false
+	}
 
-	return value, exists
+	// lazy expiry: drop the key on read once its deadline has passed
+	if e.expired(time.Now()) {
+		delete(s.data, key)
+		return "", false
+	}
+
+	return e.value, true
 }
 
 func (s *Store) Delete(key string) {

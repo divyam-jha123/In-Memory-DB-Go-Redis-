@@ -10,6 +10,7 @@ Redis-go speaks the Redis wire protocol over TCP, so you can talk to it with sta
 
 - **Redis-compatible:** works with `redis-cli` and other Redis clients
 - **Concurrent:** each client connection runs in its own goroutine, sharing one mutex-protected store
+- **Key expiry:** `SET key value EX seconds` or `PX milliseconds` gives a key a time to live, after which it disappears
 - **Easy to extend:** adding a command is one function and one line in `main.go`
 - **Dependency-free:** built only on the Go standard library
 - **Small:** easy to read and learn from
@@ -45,6 +46,12 @@ redis-cli -p 6374 SET name redis
 
 redis-cli -p 6374 GET name
 # "redis"
+
+redis-cli -p 6374 SET session abc EX 10
+# OK   (expires after 10 seconds)
+
+redis-cli -p 6374 SET lock 1 PX 500
+# OK   (expires after 500 milliseconds)
 ```
 
 Or without `redis-cli`:
@@ -60,10 +67,35 @@ printf '*1\r\n$4\r\nPING\r\n' | nc localhost 6374
 | ---------------- | ------------------------------------------------------------ |
 | `PING`           | Checks the server is alive and replies `PONG`                |
 | `SET key value`  | Stores `value` under `key` and replies `OK`                  |
+| `SET key value EX seconds` | Same as `SET`, but the key expires after `seconds` seconds |
+| `SET key value PX milliseconds` | Same as `SET`, but the key expires after `milliseconds` milliseconds |
 | `GET key`        | Returns the value stored at `key`, or `(nil)` if it doesn't exist |
 | `DEL key`        | Removes `key` and replies `OK`                               |
 
 Calling a command with the wrong number of arguments returns `ERR wrong number of arguments`, and an unrecognised command returns `ERR unknown command`.
+
+### Expiry
+
+```sh
+redis-cli -p 6374 SET token xyz PX 200
+# OK
+redis-cli -p 6374 GET token
+# "xyz"
+sleep 0.3
+redis-cli -p 6374 GET token
+# (nil)
+
+redis-cli -p 6374 SET token xyz XX 5
+# (error) ERR syntax error
+redis-cli -p 6374 SET token xyz PX 0
+# (error) ERR invalid expire time in 'set' command
+```
+
+- `EX` takes a whole number of seconds greater than zero. `EX 60` is one minute and `EX 1000` is about 16 minutes 40 seconds.
+- `PX` takes a whole number of milliseconds greater than zero, for TTLs shorter or more precise than a second. `PX 1000` is the same as `EX 1`.
+- A plain `SET` on an existing key clears any expiry it had.
+- An invalid time returns `ERR invalid expire time in 'set' command`, and any option other than `EX` or `PX` returns `ERR syntax error`.
+- Expiry is lazy: each key stores its deadline, and `GET` checks it. Once the deadline has passed, `GET` deletes the key and returns `(nil)`. An expired key that is never read again stays in memory until it is overwritten or deleted.
 
 ## How it works
 
@@ -82,6 +114,7 @@ client ──TCP──▶ net.Listener ──Accept()──▶ goroutine per con
 4. Requests are parsed from RESP arrays of bulk strings, the format `redis-cli` sends.
 5. The command name is upper-cased and looked up in the handler map. The matching handler checks its arguments, reads or writes the store, and encodes a RESP reply.
 6. The store guards its map with a `sync.Mutex`, so concurrent clients can safely read and write the same keys.
+7. Each value is stored together with its expiry time (zero means no expiry), so a value and its TTL are always written in one locked step.
 
 ## Adding a command
 
@@ -122,7 +155,8 @@ To add one:
 │   ├── server/
 │   │   └── server.go          # TCP listener, per-connection goroutines, command dispatch
 │   └── store/
-│       └── store.go           # Thread-safe in-memory key-value store
+│       ├── store.go           # Thread-safe in-memory key-value store with per-key expiry
+│       └── expiry.go          # SetExpiry: changes the TTL of an existing key (not exposed as a command yet)
 ├── docs/
 │   └── commands/              # Command metadata in JSON (not used by the server yet)
 ├── go.mod
